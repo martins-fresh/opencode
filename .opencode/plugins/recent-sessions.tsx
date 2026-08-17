@@ -44,6 +44,11 @@ function View(props: { api: TuiPluginApi; sessionID: string }) {
     "session.execution.succeeded",
     "session.execution.failed",
     "session.execution.interrupted",
+    // "Waiting" state: session is blocked on the user for a permission or a question.
+    "permission.asked",
+    "permission.replied",
+    "question.asked",
+    "question.replied",
   ] as const
   for (const type of events) {
     onCleanup(api.event.on(type, refresh))
@@ -66,13 +71,26 @@ function View(props: { api: TuiPluginApi; sessionID: string }) {
       .sort((a, b) => sessionTime(b) - sessionTime(a))
   })
 
-  const working = (sessionID: string) => (api.state.session.status(sessionID)?.type ?? "idle") !== "idle"
+  // A session is "waiting" when it's blocked on the user for a permission or a
+  // question. This is not part of SessionStatus, so we read it separately and
+  // give it priority over busy/idle.
+  const waiting = (sessionID: string) =>
+    api.state.session.permission(sessionID).length > 0 || api.state.session.question(sessionID).length > 0
 
-  const dotColor = (sessionID: string, active: boolean) => {
-    const status = api.state.session.status(sessionID)?.type
-    if (status === "retry") return theme().warning
-    if (active) return theme().success
-    return theme().textMuted
+  // SessionStatus itself is one of: "busy" | "retry" | "idle" (no "stopped").
+  const statusType = (sessionID: string) => api.state.session.status(sessionID)?.type ?? "idle"
+
+  // Icon + colour per status. Kept as plain unicode to match the LSP/MCP blocks.
+  const statusIcon = (sessionID: string) => {
+    if (waiting(sessionID)) return { glyph: "◆", color: theme().warning } // Waiting on you
+    switch (statusType(sessionID)) {
+      case "busy":
+        return { glyph: "●", color: theme().success } // Active
+      case "retry":
+        return { glyph: "↻", color: theme().warning } // Retrying
+      default:
+        return { glyph: "○", color: theme().textMuted } // Idle
+    }
   }
 
   const select = (sessionID: string) => api.route.navigate("session", { sessionID })
@@ -84,7 +102,7 @@ function View(props: { api: TuiPluginApi; sessionID: string }) {
           <text fg={theme().text}>{open() ? "▼" : "▶"}</text>
         </Show>
         <text fg={theme().text}>
-          <b>Recent</b>
+          <b>Sessions</b>
           <Show when={!open() && recent().length > 0}>
             <span style={{ fg: theme().textMuted }}> ({recent().length})</span>
           </Show>
@@ -96,12 +114,12 @@ function View(props: { api: TuiPluginApi; sessionID: string }) {
         </Show>
         <For each={recent()}>
           {(session) => {
-            const active = () => working(session.id)
+            const icon = () => statusIcon(session.id)
             const current = () => session.id === props.sessionID
             return (
               <box flexDirection="row" gap={1} onMouseDown={() => select(session.id)}>
-                <text flexShrink={0} style={{ fg: dotColor(session.id, active()) }}>
-                  {active() ? "◐" : "•"}
+                <text flexShrink={0} style={{ fg: icon().color }}>
+                  {icon().glyph}
                 </text>
                 <text fg={current() ? theme().text : theme().textMuted} wrapMode="truncate" flexGrow={1}>
                   <Show when={current()} fallback={cleanTitle(session.title)}>
