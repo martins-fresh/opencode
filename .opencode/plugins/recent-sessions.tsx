@@ -82,7 +82,7 @@ function View(props: { api: TuiPluginApi; sessionID: string }) {
 
   // Icon + colour per status. Kept as plain unicode to match the LSP/MCP blocks.
   const statusIcon = (sessionID: string) => {
-    if (waiting(sessionID)) return { glyph: "◆", color: theme().warning } // Waiting on you
+    if (waiting(sessionID)) return { glyph: "◆", color: "#ff9500" } // Waiting on you (orange)
     switch (statusType(sessionID)) {
       case "busy":
         return { glyph: "●", color: theme().success } // Active
